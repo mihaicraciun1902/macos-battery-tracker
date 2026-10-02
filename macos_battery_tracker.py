@@ -53,9 +53,22 @@ if not unplug_time:
     print("No recent unplug event found in logs.")
     exit(1)
 
-# 4. Calculate active Screen-On Time since unplugging
+# 4. Determine if the display was ALREADY on when unplugged
+was_display_on_at_unplug = False
+for line in raw_log.splitlines():
+    t_match = time_regex.match(line)
+    if not t_match:
+        continue
+    timestamp = datetime.strptime(t_match.group(1), "%Y-%m-%d %H:%M:%S")
+    if timestamp <= unplug_time:
+        if "Display is turned on" in line:
+            was_display_on_at_unplug = True
+        elif "Display is turned off" in line:
+            was_display_on_at_unplug = False
+
+# 5. Calculate active Screen-On Time since unplugging
 screen_on_seconds = 0
-display_on_since = None
+display_on_since = unplug_time if was_display_on_at_unplug else None
 
 for line in raw_log.splitlines():
     t_match = time_regex.match(line)
@@ -67,18 +80,20 @@ for line in raw_log.splitlines():
         continue
 
     if "Display is turned on" in line:
-        display_on_since = timestamp
+        # Avoid resetting timestamp on duplicate notifications
+        if display_on_since is None:
+            display_on_since = timestamp
     elif "Display is turned off" in line:
         if display_on_since:
             screen_on_seconds += (timestamp - display_on_since).total_seconds()
             display_on_since = None
 
-# If display is currently on, add elapsed time up to now
+# If display is currently on, add elapsed time up to right now
 now = datetime.now()
 if display_on_since and display_on_since <= now:
     screen_on_seconds += (now - display_on_since).total_seconds()
 
-# 5. Math & Formatting
+# 6. Math & Formatting
 drain = start_charge - current_batt
 total_wall_sec = (now - unplug_time).total_seconds()
 
